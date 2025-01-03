@@ -1,0 +1,200 @@
+from OpenGL.GL import *
+from OpenGL.GLUT import *
+from OpenGL.GLU import *
+import random
+import sys
+import math  # Importing the math module
+
+# Global variables
+car_x = 0
+car_y = -0.8
+obstacles = []
+power_ups = []
+shield = False
+shield_timer = 0
+game_over = False
+score = 0
+paused = False
+
+def init():
+    glClearColor(0.0, 0.0, 0.0, 1.0)
+    glMatrixMode(GL_PROJECTION)
+    glLoadIdentity()
+    glOrtho(-1, 1, -1, 1, -1, 1)
+
+def draw_rect_with_points(x, y, width, height, color):
+    """Draws a rectangle using points."""
+    glColor3f(*color)
+    glPointSize(2)
+    glBegin(GL_POINTS)
+    for i in range(-50, 51):
+        for j in range(-50, 51):
+            px = x + i * (width / 100)
+            py = y + j * (height / 100)
+            glVertex2f(px, py)
+    glEnd()
+
+def draw_circle_with_points(x, y, radius, color):
+    """Draws a circle using points."""
+    glColor3f(*color)
+    glPointSize(2)
+    glBegin(GL_POINTS)
+    for angle in range(360):
+        angle_rad = angle * math.pi / 180  # Using math.pi
+        px = x + radius * math.cos(angle_rad)  # Using math.cos
+        py = y + radius * math.sin(angle_rad)  # Using math.sin
+        glVertex2f(px, py)
+    glEnd()
+
+def draw_car(x, y):
+    """Draws the car using points."""
+    # Draw the body of the car
+    draw_rect_with_points(x, y, 0.2, 0.1, (0, 0, 1))  # Body
+
+    # Draw the spikes as vertical lines of points
+    glColor3f(1, 0, 0)
+    glPointSize(2)
+    glBegin(GL_POINTS)
+    for offset in [-0.15, 0.15]:
+        for t in range(-5, 6):  # Vertical points for spikes
+            spike_x = x + offset
+            spike_y = y + (t * 0.01)
+            glVertex2f(spike_x, spike_y)
+    glEnd()
+
+    # Draw the wheels
+    draw_circle_with_points(x - 0.1, y - 0.05, 0.03, (0, 0, 0))  # Front left wheel
+    draw_circle_with_points(x + 0.1, y - 0.05, 0.03, (0, 0, 0))  # Front right wheel
+    draw_circle_with_points(x - 0.1, y + 0.05, 0.03, (0, 0, 0))  # Rear left wheel
+    draw_circle_with_points(x + 0.1, y + 0.05, 0.03, (0, 0, 0))  # Rear right wheel
+
+def draw_shield(x, y):
+    """Draws the shield as a horizontal bar using points."""
+    draw_rect_with_points(x, y + 0.2, 0.3, 0.02, (0, 1, 0))
+
+def draw_text(x, y, text, color):
+    """Draws text at the specified location."""
+    glColor3f(*color)
+    glRasterPos2f(x, y)
+    for char in text:
+        glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, ord(char))
+
+def spawn_obstacle():
+    x = random.uniform(-0.9, 0.9)
+    obstacles.append({'x': x, 'y': 1.0})
+
+def spawn_power_up():
+    x = random.uniform(-0.9, 0.9)
+    power_ups.append({'x': x, 'y': 1.0, 'type': random.choice(['shield', 'score'])})
+
+def display():
+    global shield_timer, shield, game_over, score
+
+    glClear(GL_COLOR_BUFFER_BIT)
+
+    if game_over:
+        draw_text(-0.4, 0, f"GAME OVER! Score: {score}", (1, 0, 0))
+        draw_text(-0.3, -0.1, "Press 'R' to Restart", (1, 1, 1))
+    elif paused:
+        draw_text(-0.2, 0, "Game Paused", (1, 1, 0))
+    else:
+        # Draw the car
+        draw_car(car_x, car_y)
+
+        # Draw shield if active
+        if shield:
+            draw_shield(car_x, car_y)
+            draw_text(-0.95, 0.9, f"Shield Time: {shield_timer // 60}", (0, 1, 0))
+
+        # Draw obstacles
+        for obstacle in obstacles:
+            draw_rect_with_points(obstacle['x'], obstacle['y'], 0.1, 0.1, (1, 0, 0))
+
+        # Draw power-ups
+        for power_up in power_ups:
+            if power_up['type'] == 'shield':
+                draw_rect_with_points(power_up['x'], power_up['y'], 0.1, 0.1, (0, 1, 1))
+            elif power_up['type'] == 'score':
+                draw_rect_with_points(power_up['x'], power_up['y'], 0.1, 0.1, (1, 1, 0))
+
+    glutSwapBuffers()
+
+def update(value):
+    global obstacles, power_ups, car_x, car_y, shield, shield_timer, game_over, score, paused
+
+    if game_over or paused:
+        glutTimerFunc(16, update, 0)
+        return
+
+    # Update obstacles
+    for obstacle in obstacles:
+        obstacle['y'] -= 0.03  # Increased speed
+        if obstacle['y'] < -1.0:
+            obstacles.remove(obstacle)
+
+        if not shield and abs(obstacle['x'] - car_x) < 0.15 and abs(obstacle['y'] - car_y) < 0.15:
+            game_over = True
+
+    # Update power-ups
+    for power_up in power_ups:
+        power_up['y'] -= 0.03  # Increased speed for power-ups as well
+        if power_up['y'] < -1.0:
+            power_ups.remove(power_up)
+
+        if abs(power_up['x'] - car_x) < 0.15 and abs(power_up['y'] - car_y) < 0.15:
+            if power_up['type'] == 'shield':
+                shield = True
+                shield_timer = 300  # frames
+            elif power_up['type'] == 'score':
+                score += 10
+            power_ups.remove(power_up)
+
+    # Update shield timer
+    if shield:
+        shield_timer -= 2  # Decrease faster
+        if shield_timer <= 0:
+            shield = False
+
+    # Spawn new obstacles and power-ups
+    if random.randint(1, 50) == 1:
+        spawn_obstacle()
+
+    if random.randint(1, 200) == 1:
+        spawn_power_up()
+
+    glutPostRedisplay()
+    glutTimerFunc(16, update, 0)
+
+def keyboard(key, x, y):
+    global car_x, game_over, paused, shield_timer, shield, score, obstacles, power_ups
+
+    if key == b'a' and car_x > -0.9:
+        car_x -= 0.1
+    elif key == b'd' and car_x < 0.9:
+        car_x += 0.1
+    elif key == b'p':
+        paused = not paused
+    elif key == b'r' and game_over:
+        # Reset the game state
+        car_x = 0
+        obstacles.clear()
+        power_ups.clear()
+        shield = False
+        shield_timer = 0
+        game_over = False
+        score = 0
+    glutPostRedisplay()
+
+def main():
+    glutInit(sys.argv)
+    glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB)
+    glutInitWindowSize(800, 600)
+    glutCreateWindow(b"Car Dodge Game")
+    init()
+    glutDisplayFunc(display)
+    glutKeyboardFunc(keyboard)
+    glutTimerFunc(16, update, 0)
+    glutMainLoop()
+
+if __name__ == "__main__":
+    main()
